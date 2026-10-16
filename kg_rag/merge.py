@@ -159,6 +159,7 @@ def validate_citations(answer: str, context: AssembledContext) -> CitationReport
 
     # Deduplicate while preserving order, so a repeated citation is not reported as two fabrications.
     report.fabricated = list(dict.fromkeys(report.fabricated))
+    report.valid = list(dict.fromkeys(report.valid))
 
     # An answer with claims but no citation at all is uncited, not fabricated. Counted separately
     # because the fix is a prompt problem, not a hallucination.

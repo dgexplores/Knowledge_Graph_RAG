@@ -36,12 +36,13 @@ Measured numbers only. Every entry needs a date and the command that produced it
 | `kg_rag/answer.py` — extractive generator + citation enforcement | ✅ done | uncited/fabricated/empty tests |
 | `kg_rag/router.py` — keyword router with out-of-scope gate | ✅ done | anchor + scope + template tests |
 | `kg_rag/pipeline.py`, `kg_rag/cli.py` — orchestrator + CLI | ✅ done | `demo` and `bench` commands run end-to-end |
+| `kg_rag/api.py` — FastAPI service (`POST /ask`, `POST /ingest`, `GET /health`) | ✅ done | 6 endpoint tests pass against live Neo4j + pgvector |
 | `kg_rag/eval_runner.py` — strict per-class benchmark | ✅ done | benchmark report + citation-defect metric |
 | `docker-compose.yml` — Neo4j 5 + pgvector 0.8.7 | ✅ running | both containers healthy |
 | `scripts/seed_neo4j.py` | ✅ verified | typed edge indexes ONLINE |
 | `.github/workflows/ci.yml` | ✅ written | lint + tests + schema job |
 
-**Test suite: 42 passed.** `ruff check` clean.
+**Test suite: 154 passed.** `ruff check` clean.
 
 ## Measured numbers (Phase 5)
 
@@ -70,22 +71,21 @@ Offline demo corpus: 8 synthetic 10-K filings, 16 chunks, 8 graph nodes, 18 edge
 ## Ship gate
 
 - [x] End-to-end offline demo answers with validated citations (`kg_rag.cli demo`)
+- [x] FastAPI endpoint answers with validated citations (`POST /ask`, `POST /ingest`, `GET /health`)
 - [x] Re-running ingestion is idempotent (content-addressed)
 - [x] Stratified benchmark table at the top of the README, above the architecture diagram
 - [x] `03-decisions.md` has real trade-offs with what was given up (11 recorded)
 - [x] README §"What did not work" written honestly
 
 Still honest limitations:
-- No FastAPI endpoint yet — CLI is the only interface.
 - Offline demo corpus only; real EDGAR ingestion needs `SEC_USER_ACCESS` with a real contact.
 - No embedding model yet — `HashingEmbedder` is a deterministic stub; pgvector column exists but is not populated.
 
 ## Next (not started)
 
-1. FastAPI endpoint serving `POST /ask` with validated citations.
-2. Real EDGAR ingestion (`sec_client.py` with declared `User-Agent`; `budget` command refuses runs over `MAX_INGESTION_USD`).
-3. Real embedding model replacing `HashingEmbedder`; populate `chunks.embedding`.
-4. 50–100 stratified questions beyond the 10-question demo set.
+1. Real EDGAR ingestion (`sec_client.py` with declared `User-Agent`; `budget` command refuses runs over `MAX_INGESTION_USD`).
+2. Real embedding model replacing `HashingEmbedder`; populate `chunks.embedding`.
+3. 50–100 stratified questions beyond the 10-question demo set.
 
 ## Open questions
 
