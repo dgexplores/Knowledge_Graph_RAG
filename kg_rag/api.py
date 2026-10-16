@@ -124,3 +124,9 @@ async def health() -> dict[str, str]:
         return {"status": "ok"}
     except Exception as exc:  # noqa: BLE001 - report the failure, don't guess
         return {"status": "degraded", "detail": str(exc)}
+
+
+if __name__ == "__main__":  # pragma: no cover - convenience entry point
+    import uvicorn
+
+    uvicorn.run(app, host="0.0.0.0", port=8000)
