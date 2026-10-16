@@ -1,0 +1,103 @@
+{
+  "_notice": "SYNTHETIC SAMPLE CORPUS. NOT REAL SEC FILING TEXT.",
+  "_purpose": "Lets the full pipeline run and be tested offline with no API key and no network. The wording imitates 10-K risk-factor and business-section language so the multi-hop question in README has something to resolve against, but every sentence was written for this demo. It is not a source of fact about any real company, and no figure in any report produced from it means anything.",
+  "_cik": "Intentionally omitted. The real corpus resolves CIKs from SEC company_tickers.json (D-05). Fabricating plausible CIKs in a sample file is how a wrong identifier silently reaches a graph.",
+  "filings": [
+    {
+      "ticker": "NVDA",
+      "company": "NVIDIA Corporation",
+      "form": "10-K",
+      "fiscal_year": 2024,
+      "filed_at": "2024-02-21",
+      "accession": "SAMPLE-NVDA-2024",
+      "sections": {
+        "Item 1. Business": "We design accelerated computing platforms. We are fabless and rely on third-party foundries. Taiwan Semiconductor Manufacturing Company is our principal foundry supplier and manufactures substantially all of our advanced logic and memory dies. Micron Technology and SK Hynix supply the high-bandwidth memory used in our data center products. We compete with Advanced Micro Devices and Intel in data center accelerators, and with Broadcom in custom silicon.",
+        "Item 1A. Risk Factors": "We depend on Taiwan Semiconductor Manufacturing Company for manufacturing. A disruption at Taiwan Semiconductor Manufacturing Company, whether from natural disaster, geopolitical event or capacity constraint, would materially reduce our ability to ship. We also compete with Intel and Advanced Micro Devices, and our competitive position depends on sustaining this lead. Our reliance on a small number of memory suppliers, including Micron Technology, creates supply risk."
+      }
+    },
+    {
+      "ticker": "INTC",
+      "company": "Intel Corporation",
+      "form": "10-K",
+      "fiscal_year": 2024,
+      "filed_at": "2024-01-26",
+      "accession": "SAMPLE-INTC-2024",
+      "sections": {
+        "Item 1. Business": "We design and manufacture computing products. Our wholly-owned subsidiaries include Intel Israel and Intel Arizona. Our internal foundry competes for external customers against Taiwan Semiconductor Manufacturing Company. ASML is our principal supplier of lithography equipment. We compete with Advanced Micro Devices and NVIDIA.",
+        "Item 1A. Risk Factors": "Our foundry business faces intense competition from Taiwan Semiconductor Manufacturing Company, which manufactures for our competitors including NVIDIA and Broadcom. Capacity constraints at our own facilities, or at ASML which supplies equipment to the entire industry, could limit our output. We compete with NVIDIA and Advanced Micro Devices for data center share."
+      }
+    },
+    {
+      "ticker": "TSM",
+      "company": "Taiwan Semiconductor Manufacturing Company Limited",
+      "form": "10-K",
+      "fiscal_year": 2024,
+      "filed_at": "2024-04-18",
+      "accession": "SAMPLE-TSM-2024",
+      "sections": {
+        "Item 1. Business": "We are a pure-play foundry. Our principal customers include NVIDIA, Broadcom, Qualcomm and Advanced Micro Devices. ASML is a critical supplier of lithography systems to our entire industry. We compete with Intel and Samsung Electronics in foundry services.",
+        "Item 1A. Risk Factors": "We depend on ASML for advanced lithography equipment; no alternative supplier exists at the required resolution. Customer concentration is high, with NVIDIA and Broadcom among our largest. Geopolitical tension is a material risk to our operations and to our customers' operations."
+      }
+    },
+    {
+      "ticker": "ASML",
+      "company": "ASML Holding N.V.",
+      "form": "10-K",
+      "fiscal_year": 2024,
+      "filed_at": "2024-02-14",
+      "accession": "SAMPLE-ASML-2024",
+      "sections": {
+        "Item 1. Business": "We are the sole supplier of extreme ultraviolet lithography systems. Our principal customers are Taiwan Semiconductor Manufacturing Company, Intel, Samsung Electronics and Micron Technology. We compete with Canon and Nikon in lithography, though we compete with no one in extreme ultraviolet.",
+        "Item 1A. Risk Factors": "Our customers, including Taiwan Semiconductor Manufacturing Company and Intel, concentrate demand in a small number of leading-edge fabs. Export controls restrict sales to certain customers and geographies, which is a material risk to our revenue."
+      }
+    },
+    {
+      "ticker": "AMD",
+      "company": "Advanced Micro Devices, Inc.",
+      "form": "10-K",
+      "fiscal_year": 2024,
+      "filed_at": "2024-02-13",
+      "accession": "SAMPLE-AMD-2024",
+      "sections": {
+        "Item 1. Business": "We are a fabless semiconductor company. Taiwan Semiconductor Manufacturing Company is our principal foundry supplier. GlobalFoundries supplies mature-node wafers. We compete with NVIDIA and Intel in data center, client and gaming processors.",
+        "Item 1A. Risk Factors": "We depend on Taiwan Semiconductor Manufacturing Company for leading-edge capacity; allocation to NVIDIA may constrain our growth. We compete with NVIDIA, whose data center position has expanded rapidly. Our principal suppliers include TSMC and GlobalFoundries."
+      }
+    },
+    {
+      "ticker": "AVGO",
+      "company": "Broadcom Inc.",
+      "form": "10-K",
+      "fiscal_year": 2024,
+      "filed_at": "2024-12-12",
+      "accession": "SAMPLE-AVGO-2024",
+      "sections": {
+        "Item 1. Business": "We design and manufacture semiconductor and infrastructure software solutions. Taiwan Semiconductor Manufacturing Company manufactures substantially all of our leading-edge custom silicon. We compete with NVIDIA in accelerated computing and custom silicon.",
+        "Item 1A. Risk Factors": "We rely on TSMC for advanced process capacity, which is shared with NVIDIA and AMD. Competition from NVIDIA in data center silicon has intensified."
+      }
+    },
+    {
+      "ticker": "MU",
+      "company": "Micron Technology, Inc.",
+      "form": "10-K",
+      "fiscal_year": 2024,
+      "filed_at": "2024-10-04",
+      "accession": "SAMPLE-MU-2024",
+      "sections": {
+        "Item 1. Business": "We manufacture high-bandwidth memory and other memory products. ASML supplies the lithography equipment used in our production. We compete with SK Hynix and Samsung Electronics in memory. Our customers include NVIDIA and Broadcom.",
+        "Item 1A. Risk Factors": "We purchase lithography equipment from ASML, and any constraint on our access to their systems would limit our ability to produce high-bandwidth memory for customers such as NVIDIA."
+      }
+    },
+    {
+      "ticker": "QCOM",
+      "company": "QUALCOMM Incorporated",
+      "form": "10-K",
+      "fiscal_year": 2024,
+      "filed_at": "2023-11-22",
+      "accession": "SAMPLE-QCOM-2024",
+      "sections": {
+        "Item 1. Business": "We are a fabless company. Taiwan Semiconductor Manufacturing Company and Samsung Electronics manufacture our designs. We compete with MediaTek and, in automotive, with NVIDIA.",
+        "Item 1A. Risk Factors": "We depend on Taiwan Semiconductor Manufacturing Company for capacity. Competition from NVIDIA in automotive and from MediaTek in mobile is intensifying."
+      }
+    }
+  ]
+}

@@ -19,7 +19,10 @@ CREATE INDEX entity_type      IF NOT EXISTS FOR (e:Entity) ON (e.entity_type);
 CREATE INDEX entity_cik        IF NOT EXISTS FOR (e:Entity) ON (e.cik);
 CREATE INDEX entity_name_norm  IF NOT EXISTS FOR (e:Entity) ON (e.name_norm);
 CREATE INDEX filing_form_date  IF NOT EXISTS FOR (f:Filing) ON (f.form, f.filed_at);
-CREATE INDEX edge_type_asof    IF NOT EXISTS FOR ()-[r:REL]-() ON (r.type, r.as_of);
+CREATE INDEX edge_type_asof    IF NOT EXISTS
+  FOR ()-[r:AUDITED_BY|COMPETES_WITH|CUSTOMER_OF|FILES|MENTIONS_RISK|OFFICER_OF
+         |PARENT_OF|REPORTS_SEGMENT|SUBSIDIARY_OF|SUPPLIES]-()
+  ON (r.type, r.as_of);   // edges carry concrete types, not a generic :REL
 CREATE INDEX risk_heading      IF NOT EXISTS FOR (r:RiskFactor) ON (r.heading_norm);
 ```
 
@@ -82,10 +85,15 @@ alone for domain answers — that is the mistake that makes a graph unusable.
 
 ## Relationship properties
 
+Each relationship type carries the same property set, so templates can read `r.as_of` and
+`r.source_chunk_id` without caring which type matched. The type is the **label**, not a property —
+a query matches `-[:SUPPLIES]->`, never a generic `:REL` with `type = 'SUPPLIES'`.
+
 ```cypher
-:REL {
-  entity_id     : STRING   // deterministic — MERGE key for edges
-  type          : STRING   // enum from config.py
+:SUPPLIES | :CUSTOMER_OF | :COMPETES_WITH | :PARENT_OF | :SUBSIDIARY_OF
+| :OFFICER_OF | :AUDITED_BY | :FILES | :REPORTS_SEGMENT | :MENTIONS_RISK {
+  edge_id        : STRING   // deterministic; MERGE key. Includes as_of — see below.
+  type          : STRING   // duplicate of the label, kept for generic reads and counts
   as_of         : DATE     // filing date; every relationship is time-scoped
   confidence    : FLOAT
   source_chunk_id : STRING // the chunk that justified this edge — Phase 4 cites this
@@ -99,9 +107,17 @@ alone for domain answers — that is the mistake that makes a graph unusable.
 graph path into a citation, and it is why the hybrid trick works: the path ends in a chunk id, and
 that chunk id is the join key into pgvector.
 
-**Edge id** is `sha256(f"{from_id}|{rel_type}|{to_id}")[:24]` — note it does **not** include `as_of`.
-Re-running the same filing must merge; a genuinely new relationship from a later filing is a new
-node name (different `as_of`), so both behaviours are correct.
+**Edge id** is `sha256(f"{from_id}|{rel_type}|{to_id}|{as_of}")[:24]` — `as_of` **is** part of the
+identity, because it has to be for the temporal queries to mean anything:
+
+- re-running the same filing produces the same `as_of`, so it MERGEs — re-ingest is idempotent;
+- a later filing restating the same relationship carries a different `as_of`, so it becomes a
+  distinct edge instead of overwriting the earlier one;
+- `WHERE r.as_of <= date($as_of)` then returns the relationships known at a chosen date.
+
+An earlier revision excluded `as_of`, reasoning that a later filing would arrive as "a new node
+name". It does not — it is the same pair of nodes — so each restatement silently replaced the prior
+fact and every temporal filter became a no-op.
 
 ---
 

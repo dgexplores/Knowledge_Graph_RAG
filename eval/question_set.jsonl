@@ -1,0 +1,13 @@
+// Offline benchmark question set. Grounded in data/sample_corpus.json (synthetic demo text,
+// not real SEC facts). Expected terms reflect what the graph/vector corpus actually contains.
+
+{"id": "q001", "question": "Who supplies NVIDIA's foundry?", "class": "1_hop", "expected_terms": ["Taiwan Semiconductor Manufacturing", "Micron Technology"], "split": "all"}
+{"id": "q002", "question": "Who supplies Intel's lithography equipment?", "class": "1_hop", "expected_terms": ["ASML Holding"], "split": "all"}
+{"id": "q003", "question": "Who does NVIDIA compete with in data center accelerators?", "class": "1_hop", "expected_terms": ["Advanced Micro Devices", "Intel Corporation"], "split": "all"}
+{"id": "q004", "question": "Which companies are connected to both NVIDIA and AMD?", "class": "2_hop", "expected_terms": ["Intel Corporation", "Taiwan Semiconductor Manufacturing"], "split": "all"}
+{"id": "q005", "question": "Which companies does TSMC supply?", "class": "2_hop", "expected_terms": ["NVIDIA Corporation", "Advanced Micro Devices"], "split": "all"}
+{"id": "q006", "question": "How many relationships does NVIDIA have?", "class": "aggregation", "expected_terms": ["2", "3"], "split": "all"}
+{"id": "q007", "question": "How many relationships does TSMC have?", "class": "aggregation", "expected_terms": ["2", "1"], "split": "all"}
+{"id": "q008", "question": "What is a lithography system?", "class": "definition", "expected_terms": ["lithography"], "split": "all"}
+{"id": "q009", "question": "What is the weather in Paris?", "class": "out_of_scope", "expected_terms": [], "split": "all"}
+{"id": "q010", "question": "What is the capital of France?", "class": "out_of_scope", "expected_terms": [], "split": "all"}

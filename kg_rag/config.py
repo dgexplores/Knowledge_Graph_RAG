@@ -177,9 +177,28 @@ def entity_id(entity_type: EntityType, **key_fields) -> str:
     return f"ent_{digest}"
 
 
-def edge_id(from_entity_id: str, rel: RelationshipType, to_entity_id: str) -> str:
-    """Deterministic edge id. Deliberately excludes `as_of` — see docs/02-data-model.md."""
-    digest = hashlib.sha256(f"{from_entity_id}|{rel}|{to_entity_id}".encode()).hexdigest()[:24]
+def edge_id(
+    from_entity_id: str,
+    rel: RelationshipType,
+    to_entity_id: str,
+    as_of: str | None = None,
+) -> str:
+    """Deterministic edge id.
+
+    `as_of` is part of the identity, which is what makes the temporal queries meaningful:
+
+      * re-running the same filing produces the same `as_of`, so it MERGEs (idempotent re-ingest);
+      * a later filing restating the same relationship gets a different `as_of`, so it becomes a
+        distinct edge rather than overwriting the earlier one;
+      * `WHERE r.as_of <= date($as_of)` then selects the edges known at a chosen date.
+
+    An earlier version excluded `as_of` on the reasoning that a later filing would introduce "a
+    new node name". It does not — it is the same pair of nodes, so excluding `as_of` made each
+    restatement silently overwrite the prior fact and turned every temporal filter into a no-op.
+    """
+    digest = hashlib.sha256(
+        f"{from_entity_id}|{rel}|{to_entity_id}|{as_of or ''}".encode()
+    ).hexdigest()[:24]
     return f"rel_{digest}"
 
 

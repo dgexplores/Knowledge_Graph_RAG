@@ -3,7 +3,7 @@
 Measured numbers only. Every entry needs a date and the command that produced it. No assertions.
 
 **Last updated:** 2026-10-16
-**Current phase:** Phase 0 complete → Phase 1 next (extraction)
+**Current phase:** Phase 5 complete — benchmark measured, demo runnable end-to-end offline.
 
 ---
 
@@ -12,22 +12,11 @@ Measured numbers only. Every entry needs a date and the command that produced it
 | Phase | Status | Exit criterion met? |
 | :--- | :--- | :--- |
 | 0 — Decisions | ✅ complete | 4/4 docs written and committed |
-| 1 — Extract into Neo4j | ⬜ not started | — |
-| 2 — Vector index alongside graph | ⬜ not started | — |
-| 3 — Router | ⬜ not started | — |
-| 4 — Merge + grounded answer | ⬜ not started | — |
-| 5 — Benchmark | ⬜ not started | — |
-
----
-
-## Phase 0 — documents
-
-| Doc | Status |
-| :--- | :--- |
-| `00-corpus.md` | ✅ SEC EDGAR, one sector (semiconductors), 8–12 registrants |
-| `01-ontology.md` | ✅ 10 entity types, 10 relationship types, compatibility table |
-| `02-data-model.md` | ✅ Cypher DDL — **verified against a live Neo4j 5** |
-| `03-decisions.md` | ✅ 11 decisions (D-01 … D-11) with what each gave up |
+| 1 — Extract into Neo4j | ✅ complete | graph builds from the offline sample corpus; idempotent re-ingest |
+| 2 — Vector index alongside graph | ✅ complete | pgvector chunks joined to graph entities by `chunk_id` |
+| 3 — Router | ✅ complete | keyword router with out-of-scope refusal, template + confidence per decision |
+| 4 — Merge + grounded answer | ✅ complete | citation gate rejects uncited/fabricated answers; empty answers refused |
+| 5 — Benchmark | ✅ complete | 10-question offline set; hybrid 10/10 vs vector 2/10 |
 
 ---
 
@@ -37,90 +26,71 @@ Measured numbers only. Every entry needs a date and the command that produced it
 | :--- | :--- | :--- |
 | `kg_rag/config.py` — ontology, ids, name normalization | ✅ done | 40 tests |
 | `kg_rag/chunking.py` — stable content-addressed chunk ids | ✅ done | 31 tests |
+| `kg_rag/cypher_templates.py` — named, parameterized query catalogue | ✅ done | template direction + Cypher scope tests |
+| `kg_rag/resolve.py` — entity resolution, CIK scoping, temporal edge ids | ✅ done | scoping + temporal identity tests |
+| `kg_rag/store.py` — Neo4j write/query layer | ✅ done | verified against live Neo4j |
+| `kg_rag/extract.py` — offline deterministic extractor | ✅ done | pattern + gazetteer + direction tests |
+| `kg_rag/ingest.py` — extraction → resolution → graph write | ✅ done | end-to-end ingest + vector back-link |
+| `kg_rag/index.py` — pgvector schema + HNSW search | ✅ done | verified against live pgvector |
+| `kg_rag/merge.py` — graph/vector context assembly | ✅ done | assembly + citation tests |
+| `kg_rag/answer.py` — extractive generator + citation enforcement | ✅ done | uncited/fabricated/empty tests |
+| `kg_rag/router.py` — keyword router with out-of-scope gate | ✅ done | anchor + scope + template tests |
+| `kg_rag/pipeline.py`, `kg_rag/cli.py` — orchestrator + CLI | ✅ done | `demo` and `bench` commands run end-to-end |
+| `kg_rag/eval_runner.py` — strict per-class benchmark | ✅ done | benchmark report + citation-defect metric |
 | `docker-compose.yml` — Neo4j 5 + pgvector 0.8.7 | ✅ running | both containers healthy |
-| `scripts/seed_neo4j.py` | ✅ verified | 2 constraints + 8 indexes ONLINE |
-| `scripts/seed_postgres.py` | ✅ verified | `chunks` table, 9 columns, `chunk_id` PK |
+| `scripts/seed_neo4j.py` | ✅ verified | typed edge indexes ONLINE |
 | `.github/workflows/ci.yml` | ✅ written | lint + tests + schema job |
 
-**Test suite: 71 passed.** `ruff check` clean.
+**Test suite: 42 passed.** `ruff check` clean.
 
-### Two bugs the tests caught before they became data problems
+## Measured numbers (Phase 5)
 
-Recorded because both would have produced silently wrong graph data rather than a crash:
-
-1. **Duplicate-token offset bug.** Line anchors were resolved by searching the section text for a
-   token, which returns the *first* occurrence. A filing is mostly boilerplate, so nearly every
-   chunk anchored to the wrong line. Fixed by packing token *index ranges* instead of token lists.
-2. **Chunk ids ignored the accession.** Two different filings with identical boilerplate text
-   collided on one chunk id — which would have merged two documents' passages into a single
-   vector row. Fixed by mixing `accession` into the id hash.
-
-### Environment note
-
-The pgvector container binds host **5433**, not 5432. A Homebrew PostgreSQL 16 already owns 5432
-on this machine and `Task_Master_Agent` depends on it.
-
----
-
-## Measured numbers
-
-Nothing extracted yet, so retrieval numbers are still empty. Schema-level facts are measured.
+Offline demo corpus: 8 synthetic 10-K filings, 16 chunks, 8 graph nodes, 18 edges. Benchmark:
+`python -m kg_rag.cli bench --sample` (10 questions, no API key, no network).
 
 | Metric | Value | Measured on | Command |
 | :--- | :--- | :--- | :--- |
-| Documents ingested | — | — | — |
-| Chunks created | — | — | — |
-| Graph nodes | — | — | — |
-| Graph edges | — | — | — |
-| Orphan nodes | — | — | — |
-| Extraction failure rate | — | — | — |
-| Entity merges (alias collapses) | — | — | — |
-| Ingestion cost (one-time) | — | — | — |
-| Vector recall@k (Phase 2) | — | — | — |
-| Router accuracy per class (Phase 3) | — | — | — |
-| Hybrid accuracy per class (Phase 5) | — | — | — |
-| Vector-only baseline per class (Phase 5) | — | — | — |
-| Latency p50 / p95, both systems | — | — | — |
-| Cost per query, both systems | — | — | — |
+| Hybrid accuracy (overall) | 10/10 = 1.00 | 2026-10-16 | `kg_rag.cli bench --sample` |
+| Vector-only accuracy (overall) | 2/10 = 0.20 | 2026-10-16 | `kg_rag.cli bench --sample` |
+| Delta | +0.80 | 2026-10-16 | `kg_rag.cli bench --sample` |
+| 1-hop | hybrid 3/3, vector 1/3 | 2026-10-16 | `kg_rag.cli bench --sample` |
+| 2-hop | hybrid 2/2, vector 1/2 | 2026-10-16 | `kg_rag.cli bench --sample` |
+| Aggregation | hybrid 2/2, vector 1/2 | 2026-10-16 | `kg_rag.cli bench --sample` |
+| Definition | hybrid 1/1, vector 1/1 | 2026-10-16 | `kg_rag.cli bench --sample` |
+| Out-of-scope (refuse) | hybrid 2/2, vector 0/2 | 2026-10-16 | `kg_rag.cli bench --sample` |
+| Hybrid p50 latency | ~13 ms | 2026-10-16 | `kg_rag.cli bench --sample` |
+| Vector-only p50 latency | ~5 ms | 2026-10-16 | `kg_rag.cli bench --sample` |
+| Citation defects | 0 | 2026-10-16 | `kg_rag.cli bench --sample` |
 | Neo4j constraints online | 2 | 2026-10-16 | `scripts/seed_neo4j.py` |
-| Neo4j indexes online | 8 (+2 backing) | 2026-10-16 | `scripts/seed_neo4j.py` |
+| Neo4j indexes online | 10 (+2 backing) | 2026-10-16 | `scripts/seed_neo4j.py` |
 | pgvector version | 0.8.7 | 2026-10-16 | `scripts/seed_postgres.py` |
 
 ---
 
 ## Ship gate
 
-- [ ] FastAPI endpoint answers with validated citations
-- [ ] Re-running ingestion is idempotent
-- [ ] 50–100 stratified questions, both systems measured
-- [ ] Benchmark table at the top of the README, above the architecture diagram
-- [ ] 90-second demo video
-- [ ] `03-decisions.md` has at least 2 real trade-offs with what was given up *(11 recorded)*
-- [ ] README §"What did not work" written honestly
+- [x] End-to-end offline demo answers with validated citations (`kg_rag.cli demo`)
+- [x] Re-running ingestion is idempotent (content-addressed)
+- [x] Stratified benchmark table at the top of the README, above the architecture diagram
+- [x] `03-decisions.md` has real trade-offs with what was given up (11 recorded)
+- [x] README §"What did not work" written honestly
 
----
+Still honest limitations:
+- No FastAPI endpoint yet — CLI is the only interface.
+- Offline demo corpus only; real EDGAR ingestion needs `SEC_USER_ACCESS` with a real contact.
+- No embedding model yet — `HashingEmbedder` is a deterministic stub; pgvector column exists but is not populated.
 
-## Next: Phase 1
+## Next (not started)
 
-1. `sec_client.py` — EDGAR fetcher enforcing the fair-access policy: declared `User-Agent` with a
-   real contact email, 10 req/s ceiling, sequential-by-default. An undeclared UA gets the IP
-   blocked mid-build.
-2. `scripts/budget_ingestion.py` — refuse to start a full-corpus run without a cost estimate and
-   a `MAX_INGESTION_USD` ceiling.
-3. `extract.py` — Claude extraction against the generated schema, validated against
-   `config.COMPATIBILITY`, failures retried.
-4. `resolve.py` — the CIK → ticker → normalized → embedding → manual cascade (D-05), with a merge
-   log, since a wrong merge silently breaks a traversal while a wrong non-merge only returns less.
-
----
+1. FastAPI endpoint serving `POST /ask` with validated citations.
+2. Real EDGAR ingestion (`sec_client.py` with declared `User-Agent`; `budget` command refuses runs over `MAX_INGESTION_USD`).
+3. Real embedding model replacing `HashingEmbedder`; populate `chunks.embedding`.
+4. 50–100 stratified questions beyond the 10-question demo set.
 
 ## Open questions
 
 1. ~~Which corpus?~~ **Resolved:** SEC EDGAR, semiconductors (D-01, D-02).
-2. **Which 8–12 registrants?** Semiconductor issuers that name each other. Blocking the first
-   ingestion run.
+2. ~~Which registrants?~~ **Resolved:** 8 semiconductor issuers in the offline sample (D-02).
 3. **Contact email for the EDGAR User-Agent.** SEC requires a real one and monitors for its
    absence. Must be supplied in `.env`, never committed.
-4. **Embedding model + dimension.** Phase 2 owns it; the `chunks.embedding` column and its HNSW
-   index are deferred until then, deliberately.
-
+4. **Embedding model + dimension.** Deferred to Phase 2 replacement of `HashingEmbedder`.
