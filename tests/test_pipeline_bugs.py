@@ -18,6 +18,8 @@ These are pure-unit where possible; the ones that need a database are marked and
 
 from __future__ import annotations
 
+from typing import ClassVar
+
 import pytest
 
 from kg_rag.config import EntityType, RelationshipType
@@ -435,7 +437,7 @@ class TestRouterAnchorExtraction:
     """The router must anchor questions to registered entities despite short forms
     ("TSMC", "AMD") and possessives ("NVIDIA's")."""
 
-    NAMES = [
+    NAMES: ClassVar[list[str]] = [
         "Taiwan Semiconductor Manufacturing Company Limited",
         "Intel Corporation",
         "Micron Technology, Inc.",
@@ -509,8 +511,10 @@ class TestExtractiveGeneratorDedup:
         context = AssembledContext(
             graph_statements=[
                 "Micron Technology, Inc. --[SUPPLIES]--> NVIDIA Corporation [chunk:c1]",
-                "Taiwan Semiconductor Manufacturing Company Limited --[SUPPLIES]--> "
-                "NVIDIA Corporation [chunk:c1]",
+                (
+                    "Taiwan Semiconductor Manufacturing Company Limited --[SUPPLIES]--> "
+                    "NVIDIA Corporation [chunk:c1]"
+                ),
             ],
             passages=[],
             question="q",
