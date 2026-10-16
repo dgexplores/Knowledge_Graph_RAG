@@ -1,0 +1,544 @@
+# Knowledge Graph RAG
+
+**Hybrid knowledge-graph + vector retrieval over a relationship-rich corpus. Raises multi-hop
+question accuracy from `[baseline]%` to `[target]%` against a vector-only baseline, at
+`[Z]` ms p95.**
+
+> **Status: not built.** This document is the build spec. It is written before any code so the
+> decisions are made deliberately rather than discovered mid-implementation. Every number in the
+> header is a placeholder that Phase 5 replaces with a measurement.
+>
+> Phase completion is tracked in [`docs/PROGRESS.md`](docs/PROGRESS.md).
+
+---
+
+## The number
+
+This project is worthless without a benchmark table. It is the first thing in the README when the
+project is done, and it is the thing an interviewer reads.
+
+The expected shape of the result, and the shape that makes the story:
+
+| Question class | Vector-only baseline | Hybrid (graph + vector) | Gap |
+| :--- | :--- | :--- | :--- |
+| 1-hop (single fact) | high | high | ~parity |
+| 2-hop (one relationship) | mid | high | widening |
+| 3-hop (chain) | low | mid | widening further |
+| Aggregation (count / sum over relations) | very low | high | largest |
+| Out-of-scope (must refuse) | varies | varies | must be ≥ baseline |
+
+**Parity on 1-hop and a widening gap as hops increase is the entire claim.** If the graph does not
+beat dense retrieval on 3-hop questions, the project did not work and the README must say so.
+
+Also reported, honestly, because omitting them makes the accuracy claim unbelievable:
+
+- p50 / p95 latency per query, both systems
+- cost per query, both systems
+- **one-time graph ingestion cost** — this is expensive and slow and saying so is the point
+- accuracy on the out-of-scope class (a system that answers everything scores well and is useless)
+
+---
+
+## Why this signals
+
+Almost every candidate has built vector RAG. Very few have built retrieval that answers questions
+requiring two or three hops across related entities. This proves you understand **where embeddings
+fail** and what to do about it — which is the standard follow-up interview question for separating
+people who read about RAG from people who have debugged it.
+
+Embeddings are lossy on structure. They capture topical similarity, not the join path. A question
+that requires "which suppliers also supply X, and do any of them have a compliance violation in the
+same fiscal year" has no single passage that contains the answer. Dense retrieval will return
+plausible-looking passages that each hold half the chain. A graph returns the path.
+
+---
+
+## Ship gate
+
+Done when **both** of these are true:
+
+1. A FastAPI endpoint answers questions with **validated citations** — every citation resolves to a
+   chunk id that was actually retrieved, and the response is rejected and regenerated otherwise.
+2. The README **opens with the benchmark table above**, above the architecture diagram.
+
+Not done when: the code runs. It is done when the number is published.
+
+---
+
+## Stack
+
+| Layer | Choice | Notes |
+| :--- | :--- | :--- |
+| Language | Python 3.11+ | match the other repos |
+| Graph store | **Neo4j** (Cypher) | not a graph DB in memory, not NetworkX — Cypher is the point |
+| Vector store | **pgvector** (Postgres) | same Postgres as run records if you extend `Task_Master_Agent` |
+| Orchestration | LangChain | thin use: loaders + model client. Do not build a chain DSL |
+| Model | Claude API | structured output via tool-use / JSON schema |
+| Serving | FastAPI + Pydantic | one endpoint, typed request and response |
+| Eval | reuse **`Groundtruth`** | do not write a second eval harness |
+| Tests | pytest | |
+
+Deliberately **not** used: LangChain's graph/chain abstractions, a vector DB with native hybrid
+search (you want to control fusion yourself — that is the thing being demonstrated), a caching
+layer (that is `Warmstart`, a different project).
+
+---
+
+## Architecture
+
+```
+                      ┌──────────────────────┐
+  documents ─────────►│  Phase 1  INGEST     │
+  (SEC / wiki /       │  chunk → extract     │
+   papers / docs)     │  entities + edges    │──► Neo4j  (graph of record)
+                      │  entity resolution   │
+                      └──────────┬───────────┘
+                                 │ shared chunk_id
+                      ┌──────────▼───────────┐
+                      │  Phase 2  INDEX      │
+                      │  same chunks,        │──► pgvector (passages)
+                      │  embedded + metadata │
+                      └──────────┬───────────┘
+                                 │
+                      ┌──────────▼───────────┐
+   question ─────────►│  Phase 3  ROUTE      │
+                      │  cheap classifier    │
+                      │  graph | vector |both│
+                      └──────────┬───────────┘
+                                 │
+                      ┌──────────▼───────────┐
+                      │  Phase 4  MERGE      │
+                      │  paths → statements  │
+                      │  dedupe + label      │
+                      │  labelled context    │──► Claude ──► answer + citations
+                      └──────────┬───────────┘       (validated, else
+                                 │                  regenerate)
+                      ┌──────────▼───────────┐
+                      │  Phase 5  BENCHMARK  │
+                      │  50-100 Qs, 2 systems│──► the table at the top
+                      └──────────────────────┘
+```
+
+**The shared chunk id between Neo4j and pgvector is the whole trick.** It lets you cross from a
+graph path back to the original text, and from a retrieved passage into the graph neighbourhood
+around it. If the two stores cannot reference each other, you have two disconnected systems and no
+hybrid retrieval.
+
+---
+
+## Phase 0 — Decisions before code
+
+Do not write extraction code until these four documents exist. Each one is short. Each one, if you
+get it wrong, costs you a rewrite later.
+
+### `docs/00-corpus.md` — corpus choice
+
+Pick a corpus that **actually has relationships**. This is the single decision that most often kills
+the project.
+
+| Corpus | Relationships? | Verdict |
+| :--- | :--- | :--- |
+| SEC filings (10-K, 10-Q, 8-K) | subsidiaries, suppliers, competitors, officers, acquisitions, risk factors cross-referenced | ✅ best default |
+| Internal wiki / docs | dependency chains, "see also", product→component | ✅ good |
+| Research papers with citations | cites, extends, contradicts, same-author | ✅ good, and the citation graph is free |
+| Product docs with dependency chains | depends-on, incompatible-with, supersedes | ✅ good |
+| A folder of unrelated blog posts | none | ❌ nothing to extract — the graph is pointless |
+
+For SEC filings: a 3-hop question is *"Which suppliers to Subsidiary A also appear in a risk factor
+for Subsidiary B in the same fiscal year?"* That question has no single containing passage. It is
+the demo.
+
+Record: source, document count, acquisition method, licence, expected chunk count, and the three
+example questions that must be answerable after the build.
+
+### `docs/01-ontology.md` — constrained schema
+
+**Constrain the ontology before writing any code.** An open-ended "extract all entities" prompt
+produces a graph nobody can query.
+
+- **5–10 entity types.** Fewer is better. For SEC filings: `Company`, `Subsidiary`, `Officer`,
+  `Supplier`, `Customer`, `Competitor`, `RiskFactor`, `Product`, `Filing`.
+- **8–15 relationship types**, each with a direction and a domain/range constraint.
+- For every entity type: the canonical name form, the identifying key, and **the resolution
+  strategy** (exact match / normalized / embedding similarity / alias table).
+- For every relationship type: cardinality (1:1, 1:N, N:M), whether it is symmetric, and whether it
+  is time-scoped.
+
+Write the allowed-value lists as Python enums. Extraction validates against them and retries. This
+is a schema, not a suggestion.
+
+### `docs/02-data-model.md` — nodes, edges, constraints
+
+Concrete Cypher DDL, written and applied before extraction:
+
+```cypher
+CREATE CONSTRAINT entity_id IF NOT EXISTS
+FOR (e:Entity) REQUIRE e.entity_id IS UNIQUE;
+
+CREATE INDEX entity_type IF NOT EXISTS
+FOR (e:Entity) ON (e.entity_type);
+```
+
+Every edge carries provenance. Not optional — this is what Phase 4 cites:
+
+```
+src_chunk_id     the exact chunk that justified this edge
+src_document_id
+extraction_confidence
+model_version     so you can tell what changed when the prompt changes
+```
+
+Every node carries `aliases[]` and `mentions[]` (source chunk ids) for the same reason.
+
+### `docs/03-decisions.md` — the trade-off log
+
+A running table: decision, options considered, choice, what you gave up. Started in Phase 0,
+appended every phase. The README's "Design decisions" section is generated from this file.
+
+Two entries to write **before** coding, because they are the ones that hurt:
+
+- **Entity resolution threshold.** What cosine similarity collapses "Acme Corp" into "Acme
+  Corporation", and what it wrongly collapses. Tune on a hand-built list of ~30 known-same /
+  known-different pairs.
+- **Fusion strategy.** early (fuse candidate sets before reranking) vs late (score separately,
+  combine). Write down why you picked one. Expect to revisit it.
+
+---
+
+## Phase 1 — Extract entities and relationships into Neo4j
+
+**Exit criterion:** the corpus is in Neo4j, re-running ingestion is idempotent, and you can answer
+at least one 2-hop question with hand-written Cypher.
+
+### Steps
+
+1. **Chunk the documents.** Keep the chunk id stable and record `document_id` + section path +
+   date. Chunks must be small enough that an extracted edge points at something citable, large
+   enough that a relationship is not split across two chunks.
+
+2. **Extraction pass with Claude returning a strict schema.** Entity type, canonical name,
+   relationship type, source chunk id, confidence. Validate every response against the ontology enums
+   and **retry failures**. A strict schema plus validation is what stops the graph filling with
+   `ENTITY` nodes of type `OTHER`.
+
+3. **Entity resolution — the hard part, and the part that gets skipped.**
+   `Acme Corp`, `Acme Corporation`, and `ACME` must collapse into one node. Without this the same
+   company exists as four disconnected nodes and multi-hop queries silently return nothing.
+
+   Order of attempts:
+   1. Identifying key exact match (CIK, EIN, ticker) — authoritative, do this first
+   2. Normalized name (lowercase, strip `inc/ltd/corp/llc`, punctuation, whitespace)
+   3. Embedding similarity above a **tuned** threshold, cosine over name + description
+   4. Manual alias table for the remainder
+
+   Store every accepted alias on the node. Log every merge — the merge log is how you tune the
+   threshold.
+
+4. **Write with `MERGE`, never `CREATE`.** Re-running ingestion must be idempotent. Use a
+   deterministic entity id derived from the identifying key or the canonical normalized name.
+
+5. **Budget extraction cost before running the full corpus.** Tokens in, dollars out, estimated per
+   document and projected for the corpus. **Cache results by document hash** — re-runs must not
+   re-pay. This is where people accidentally spend $200 in an afternoon.
+
+### Verify before moving on
+
+```cypher
+// orphan check — nodes with no relationships means extraction silently failed
+MATCH (e:Entity) WHERE size([(e)--() | 1]) = 0 RETURN count(e);
+
+// degree distribution — a flat distribution means the graph is not connected
+MATCH (e:Entity)-[r]->(m:Entity) RETURN e.entity_type, count(*) ORDER BY count(*) DESC;
+```
+
+If almost everything is an orphan, your prompt or ontology is wrong. Fix that before Phase 3 —
+a router over a broken graph routes to nothing.
+
+---
+
+## Phase 2 — Build the vector index alongside the graph
+
+**Exit criterion:** the same chunk ids exist in both stores, and you have measured recall@k.
+
+1. **Embed the same chunks into pgvector** with metadata: `document_id`, `section_path`, `date`,
+   `entity_ids[]` (the entities that chunk mentions). That last field is what lets you hop from a
+   retrieved passage into the graph neighbourhood.
+
+2. **Share chunk ids across both stores.** Same id, both places. Non-negotiable.
+
+3. **Index with HNSW**, tune `ef_search`.
+
+4. **Measure recall@k on a small labelled set — before building the router.** Do not build a router
+   on top of retrieval you have not measured. 30-50 queries with known relevant chunks is enough to
+   start. Record the number in `docs/PROGRESS.md`.
+
+---
+
+## Phase 3 — Route questions to the right retrieval path
+
+**Exit criterion:** a router with a measured per-class accuracy, and every decision logged.
+
+1. **Cheap router:** small model call, few-shot prompt, returns an **enum**
+   (`graph` | `vector` | `both`), plus a confidence score. **Low confidence → run both and merge.**
+   The fallback is the feature; the enum is the easy part.
+
+2. **Routing policy:**
+
+   | Question type | Route | Example |
+   | :--- | :--- | :--- |
+   | Connection / relationship | graph | "who owns X?" |
+   | Multi-hop chain | graph | "which suppliers to A also appear in B's risk factors?" |
+   | Comparison across entities | graph | "is X larger than Y by revenue?" |
+   | Aggregation over relations | graph | "how many subsidiaries does X have?" |
+   | Definition | vector | "what is a pressure curve?" |
+   | Policy lookup | vector | "what is the return window?" |
+   | Single fact | vector | "what is the CEO of X as of the 2024 filing?" |
+
+3. **Never let the model emit raw Cypher.** This is a security control *and* it makes results
+   reproducible. Keep a **template library keyed by query type**; the model fills **parameters
+   only**.
+
+   ```
+   WRONG:  model → "MATCH (a)-[:SUPPLIES]->(b) WHERE a.name = '{name}' RETURN b" → db.execute()
+   RIGHT:  model → {"query_type": "suppliers_of", "params": {"company": "Acme"}}
+           → template library looks up "suppliers_of" → parameterized Cypher with bound params
+   ```
+
+   Parameterized queries. No string interpolation of model output into Cypher. Ever.
+
+4. **Log every routing decision** with the question, the chosen route, the confidence, and the
+   outcome. Phase 5 needs this and **you will not be able to reconstruct it later**. If you skip
+   this log, Phase 5 cannot tell you whether a wrong answer came from a bad route or a bad
+   traversal.
+
+---
+
+## Phase 4 — Merge both sources into one grounded answer
+
+**Exit criterion:** every claim carries a citation that resolves to a retrieved chunk.
+
+1. **Graph traversal returns paths; convert paths to readable statements before the prompt.** Raw
+   triples generate awkward text: `[:SUPPLIES 0.94, :COMPETES_WITH 0.88]`. Convert to
+   `"Acme Corp supplies Widget Ltd (confidence 0.94)"`. The conversion is deterministic code, not
+   a model call.
+
+2. **Deduplicate across the two result sets.** Same fact from graph and vector is one fact.
+
+3. **Assemble context with explicit labels** separating graph-derived facts from retrieved passages:
+
+   ```
+   ## Graph-derived facts
+   - Acme Corp --[SUPPLIES, 0.94]--> Widget Ltd   [chunk: f10k-2024#412]
+
+   ## Retrieved passages
+   [1] (chunk: 8k-2023q3#77) "Widget Ltd has historically sourced ..."
+   ```
+
+   Labels let you attribute each claim at answer time, which is what makes citation validation
+   possible.
+
+4. **Require a citation per claim, then validate every citation resolves to a chunk id that was
+   actually retrieved.** Reject and regenerate on failure. Maximum two retries, then return a
+   refusal rather than an uncited answer.
+
+   **This costs nothing and eliminates invented sources.** It is the highest value-per-line
+   correctness control in the project. Do not skip it because it seems obvious.
+
+---
+
+## Phase 5 — Benchmark and publish the delta
+
+**Exit criterion:** the table at the top of this README is filled in with real numbers.
+
+1. **Question set: 50–100 items, stratified.** Recorded in `eval/question_set.jsonl`, one JSON
+   object per line:
+
+   ```json
+   {"id": "q017", "question": "...", "class": "3_hop", "hops": 3,
+    "answer": "...", "relevant_chunk_ids": ["10k-2024#412", "10k-2024#889"],
+    "refusable": false}
+   ```
+
+   Classes: `1_hop`, `2_hop`, `3_hop`, `aggregation`, `out_of_scope` (refusable).
+
+   The out-of-scope class matters as much as the rest. A system that answers everything scores well
+   and is useless in production.
+
+2. **Run both systems on the same set.** Same questions, same corpus, same model for generation.
+   The only difference is the retrieval path. Report accuracy **broken out by class** — a single
+   aggregate number hides the entire point.
+
+3. **Measure latency and cost per query for both**, plus the one-time graph ingestion cost.
+
+4. **Publish it.** Benchmark table at the top of the README, above the architecture diagram.
+   Architecture diagram second. Setup instructions last. Nobody scrolls.
+
+---
+
+## Repo layout
+
+```
+Knowledge_Graph_RAG/
+├── README.md                    # this file; top section becomes the result
+├── pyproject.toml
+├── .env.example                 # NEO4J_URI, ANTHROPIC_API_KEY, POSTGRES_DSN — keys empty
+├── Makefile                     # setup | ingest | serve | bench | test
+├── docs/
+│   ├── PROGRESS.md              # phase checkboxes + measured numbers, updated as you go
+│   ├── 00-corpus.md             # Phase 0
+│   ├── 01-ontology.md           # Phase 0
+│   ├── 02-data-model.md         # Phase 0
+│   ├── 03-decisions.md          # Phase 0, appended every phase
+│   ├── 05-retrieval-measurement.md   # Phase 2 recall@k
+│   ├── 06-router-eval.md        # Phase 3 per-class router accuracy
+│   └── 07-benchmark.md          # Phase 5 — the raw results behind the README table
+├── kg_rag/
+│   ├── config.py                # ontology enums live here; loaded by extraction
+│   ├── chunking.py              # stable chunk ids
+│   ├── extract.py               # Phase 1 Claude extraction + schema validation + retry
+│   ├── resolve.py               # Phase 1 entity resolution, alias table, merge log
+│   ├── ingest.py                # Phase 1 orchestrator, idempotent, hash-cached
+│   ├── index.py                 # Phase 2 pgvector + HNSW + metadata
+│   ├── router.py                # Phase 3 enum router + low-confidence both-path fallback
+│   ├── cypher_templates.py      # Phase 3 template library — model fills params only
+│   ├── graph_query.py           # Phase 3 parameterized traversal
+│   ├── merge.py                 # Phase 4 path→statement, dedupe, labelled context
+│   ├── answer.py                # Phase 4 generation + citation validation + regenerate
+│   ├── logging_decisions.py     # Phase 3 routing log writer
+│   └── api.py                   # FastAPI: POST /ask
+├── eval/
+│   ├── question_set.jsonl
+│   ├── run_bench.py             # both systems, per-class breakdown
+│   └── baseline_vector_only.py  # the baseline you must beat
+├── scripts/
+│   ├── seed_neo4j.py            # constraints + indexes from 02-data-model.md
+│   ├── budget_ingestion.py      # Phase 1 pre-flight cost estimate
+│   └── seed_postgres.py
+└── tests/
+    ├── test_chunking.py
+    ├── test_extract_schema.py   # malformed model output must be rejected
+    ├── test_resolve.py          # the known-same / known-different pairs
+    ├── test_idempotency.py      # ingest twice → identical graph
+    ├── test_cypher_templates.py # param binding; no raw model Cypher reaches the driver
+    └── test_citations.py        # fabricated chunk id must be rejected
+```
+
+---
+
+## Documentation deliverables
+
+Every file below is written at the phase named, not at the end. Writing them at the end means
+writing them to justify decisions you have already made badly.
+
+| Doc | Written | Must contain |
+| :--- | :--- | :--- |
+| `docs/PROGRESS.md` | Day 1, then continuously | Phase checkboxes; every measured number with the date and command that produced it |
+| `docs/00-corpus.md` | Phase 0 | Source, licence, doc count, expected chunks, the 3 questions that must be answerable |
+| `docs/01-ontology.md` | Phase 0 | Entity types, relationship types, cardinality, resolution strategy per type |
+| `docs/02-data-model.md` | Phase 0 | Cypher DDL, provenance fields on every node and edge |
+| `docs/03-decisions.md` | Phase 0 + every phase | Decision / options / choice / what we gave up |
+| `docs/04-ingestion-run.md` | Phase 1 | Cost per document, corpus total, extraction failure count, entity merge log summary |
+| `docs/05-retrieval-measurement.md` | Phase 2 | recall@k on the labelled set, `ef_search` tuning result |
+| `docs/06-router-eval.md` | Phase 3 | Per-class router accuracy, fallback rate, example misroutes |
+| `docs/07-benchmark.md` | Phase 5 | Raw per-class results, latency, cost, ingestion cost |
+| README §"Design decisions" | Phase 5 | Top 2–3 trade-offs, distilled from `03-decisions.md` |
+| README §"What did not work" | Phase 5 | See below |
+| 90-second demo video | Phase 5 | At the top of the README |
+
+### The two README sections reviewers actually read
+
+**Design decisions** — the two or three real trade-offs you made and what you gave up. Generated
+from `03-decisions.md`, not written fresh.
+
+**What did not work** — the strongest credibility signal in the whole repository, and the one
+nobody writes. Required entries:
+
+- Something you tried that failed, and why
+- A phase where your first approach was wrong, and what the data told you
+- A limitation of the finished system, honestly stated
+
+A reported negative result reads as more trustworthy than a suspiciously perfect one.
+
+---
+
+## Dependencies on your other projects
+
+| This project | Uses | From |
+| :--- | :--- | :--- |
+| Evaluation harness | `Groundtruth` — reuse its report format, regression-gate pattern, and honest-failure-notes style. Do **not** write a second harness. | `Groundtruth` |
+| System under attack | your own agent system, later, in the red-team project | `Task_Master_Agent` |
+| Cost-per-request measurement | `scripts/measure.py` pattern | `Task_Master_Agent` |
+
+**`Groundtruth` is the natural eval layer for this project.** It already measures recall@k and
+already gates CI on a metric drop. Extending it to score this system's answers closes the
+build → evaluate → attack chain instead of leaving three disconnected repos.
+
+---
+
+## Where this usually goes wrong
+
+These are the four documented failure modes. Each one has been observed repeatedly.
+
+1. **An open-ended ontology**, which produces a graph you cannot write queries against. Fix:
+   Phase 0, before any code.
+2. **Skipping entity resolution**, so the same company exists as four disconnected nodes and
+   multi-hop queries silently return nothing. Fix: Phase 1, and never skipped.
+3. **Letting the model write raw Cypher**, which is both a security hole and unreproducible. Fix:
+   template library, Phase 3.
+4. **Choosing a corpus with no real relationships**, which makes the graph pointless. Fix:
+   Phase 0.
+
+Add two more from building systems like this:
+
+5. **Building the router before measuring retrieval.** You cannot route to a path you have not
+   evaluated.
+6. **Not logging routing decisions in Phase 3.** Phase 5 then cannot distinguish a bad route from
+   a bad traversal, and you debug blind.
+
+---
+
+## Stretch goals
+
+Only after the benchmark table is published.
+
+- **Incremental graph updates** instead of full reingestion on every corpus change
+- **Community detection** for corpus-level summaries — what clusters of companies appear together
+- **Graph visualization in the response UI** — render the traversal path next to the answer; it is
+  the most convincing part of a demo
+- Query decomposition for questions with more than one independent sub-question
+- Caching graph traversals by canonical query signature
+
+---
+
+## Resume line
+
+> Built a hybrid knowledge-graph and vector RAG system over `[N]` documents; raised multi-hop
+> question accuracy from `[X]`% to `[Y]`% against a vector-only baseline at `[Z]` ms p95.
+
+Fill this in only when the numbers are real.
+
+---
+
+## Build order at a glance
+
+```
+Day 1        Phase 0 docs (corpus, ontology, data model, decisions)
+             → commit before any code
+
+Week 1      Phase 1  chunking → extraction → entity resolution → Neo4j
+             gate: idempotent re-run, no orphans, hand-written 2-hop Cypher answers
+
+Week 2      Phase 2  pgvector, shared chunk ids, recall@k measured
+
+Week 2–3    Phase 3  router (enum + confidence + both-path fallback), template library,
+             decision logging
+
+Week 3      Phase 4  path→statement, dedupe, labelled context, citation validation
+
+Week 3–4    Phase 5  50–100 stratified questions, both systems, README table,
+             90-second video, what-did-not-work
+
+Estimate     3–4 weeks part time (10–12 h/week). Halve if full time.
+```
+
+Reference: `BASWE_Build_These_Six_Projects.pdf` — Project 1 · RAG.

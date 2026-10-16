@@ -1,0 +1,32 @@
+# Python
+__pycache__/
+*.py[cod]
+.venv/
+venv/
+
+# Env / secrets — never commit real keys
+.env
+.env.*
+!.env.example
+*.pem
+*.key
+
+# Test / tooling caches
+.pytest_cache/
+.mypy_cache/
+.ruff_cache/
+.coverage
+htmlcov/
+
+# Local Neo4j / Postgres dumps
+*.dump
+docker-data/
+
+# Generated benchmark output — regenerate with `make bench`,
+# the committed summary lives in docs/07-benchmark.md
+eval/results/
+*.eval.json
+
+# OS
+.DS_Store
+Thumbs.db
