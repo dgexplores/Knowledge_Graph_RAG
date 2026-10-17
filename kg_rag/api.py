@@ -14,14 +14,18 @@ exercises the exact same store + index the benchmark uses.
 from __future__ import annotations
 
 from contextlib import asynccontextmanager
+from pathlib import Path
 from typing import Any
 
 from fastapi import FastAPI, HTTPException
+from fastapi.responses import FileResponse
+from fastapi.staticfiles import StaticFiles
 from pydantic import BaseModel
 
 from kg_rag.pipeline import AskResult, build_pipeline, build_sample_gazetteer, load_sample_corpus
 
 _pipeline: Any = None
+STATIC_DIR = Path(__file__).parent / "static"
 
 
 @asynccontextmanager
@@ -40,6 +44,7 @@ app = FastAPI(
     lifespan=lifespan,
     description="Hybrid knowledge-graph + vector retrieval over SEC filings.",
 )
+app.mount("/static", StaticFiles(directory=STATIC_DIR), name="static")
 
 
 class AskRequest(BaseModel):
@@ -64,6 +69,12 @@ class AskResponse(BaseModel):
     citation_report: dict
     generator: str
     attempts: int
+
+
+@app.get("/", include_in_schema=False)
+async def dashboard() -> FileResponse:
+    """Serve the interactive project demo without adding a separate frontend stack."""
+    return FileResponse(STATIC_DIR / "index.html")
 
 
 @app.post("/ask", response_model=AskResponse)
@@ -111,6 +122,18 @@ async def ingest() -> IngestResponse:
         graph=report["graph"],
         relationships_by_type=report["relationships_by_type"],
     )
+
+
+@app.get("/demo/load", response_model=IngestResponse, include_in_schema=False)
+async def load_demo() -> IngestResponse:
+    """Presentation-only GET route for local embedded-browser demos."""
+    return await ingest()
+
+
+@app.get("/demo/ask", response_model=AskResponse, include_in_schema=False)
+async def ask_demo(question: str) -> AskResponse:
+    """Presentation-only GET route for local embedded-browser demos."""
+    return await ask(AskRequest(question=question))
 
 
 @app.get("/health")
