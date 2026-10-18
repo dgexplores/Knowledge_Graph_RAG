@@ -11,6 +11,7 @@ import os
 
 import pytest
 from fastapi.testclient import TestClient
+from neo4j.exceptions import ServiceUnavailable
 
 from kg_rag.api import app
 
@@ -27,6 +28,10 @@ def client():
         "bolt://localhost:7687", auth=("neo4j", NEO4J_PASSWORD)
     )
     try:
+        try:
+            driver.verify_connectivity()
+        except ServiceUnavailable:
+            pytest.skip("requires a reachable Neo4j service on localhost:7687")
         with driver.session() as session:
             session.run("MATCH (n) DETACH DELETE n")
     finally:

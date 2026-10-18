@@ -14,6 +14,11 @@ from __future__ import annotations
 
 import os
 import sys
+from pathlib import Path
+
+# `python scripts/seed_neo4j.py` makes `scripts/` the import root. Add the repository root so the
+# documented command works from a fresh clone without first installing the package.
+sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 
 from neo4j import GraphDatabase
 

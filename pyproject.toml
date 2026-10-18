@@ -23,6 +23,9 @@ dev = [
     "ruff",
 ]
 
+[tool.setuptools]
+packages = ["kg_rag"]
+
 [tool.pytest.ini_options]
 testpaths = ["tests"]
 
