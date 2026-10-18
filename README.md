@@ -7,6 +7,8 @@ relationship, multi-hop, and count questions with source evidence, while refusin
 the document corpus cannot support. The repository is an end-to-end, portfolio-quality prototype;
 it is not claimed to be production-ready.
 
+**Implementation status (2026-10-18):** the local prototype, sample corpus, API, and showcase are documented below; no public deployment is configured. The latest GitHub Actions CI runs are failing in both the test and Neo4j schema jobs, so the historical test results in this repository should be treated as prior evidence, not current CI verification, until those jobs are repaired and rerun.
+
 ## Why this exists
 
 Organizations keep important relationships in unstructured documents: supplier dependencies in
