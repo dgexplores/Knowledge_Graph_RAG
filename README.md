@@ -128,7 +128,7 @@ cd Knowledge_Graph_RAG
 docker compose up -d neo4j postgres
 python3 scripts/seed_neo4j.py
 pip install -r requirements.txt
-export NEO4J_PASSWORD=kg_rag_local_dev_2026
+export NEO4J_PASSWORD=<your-local-neo4j-password>
 python3 -m kg_rag.cli ingest --sample
 python3 -m kg_rag.cli ask "Who supplies NVIDIA's foundry?"
 ```
@@ -136,7 +136,7 @@ python3 -m kg_rag.cli ask "Who supplies NVIDIA's foundry?"
 For the local showcase UI:
 
 ```bash
-NEO4J_PASSWORD=kg_rag_local_dev_2026 python3 -m uvicorn kg_rag.api:app --port 8010
+NEO4J_PASSWORD=<your-local-neo4j-password> python3 -m uvicorn kg_rag.api:app --port 8010
 ```
 
 Open `http://127.0.0.1:8010`, load the demo corpus, and run a guided question. The showcase
